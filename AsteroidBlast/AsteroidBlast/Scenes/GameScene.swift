@@ -6,7 +6,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var lastUpdateTime: TimeInterval = 0
 
     // MARK: - Player
-    private var player: SKSpriteNode!
+    private var player: PlayerNode!
 
     // MARK: - Asteroid spawn
     private var timeSinceLastAsteroid: TimeInterval = 0
@@ -45,16 +45,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Setup
 
     private func setupPlayer() {
-        player = SKSpriteNode(color: .white, size: CGSize(width: 60, height: 20))
-        player.position = CGPoint(x: size.width / 2, y: size.height * 0.15)
+        player = PlayerNode()
+        player.position = CGPoint(x: size.width / 2,
+                                  y: size.height * 0.15)
         addChild(player)
-
-        let body = SKPhysicsBody(rectangleOf: player.size)
-        body.isDynamic = true
-        body.categoryBitMask = PhysicsCategory.player
-        body.contactTestBitMask = PhysicsCategory.asteroid
-        body.collisionBitMask = PhysicsCategory.none
-        player.physicsBody = body
     }
 
     private func setupHUD() {
@@ -115,7 +109,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
-        player.position.x = location.x
+        player.moveHorizontally(to: location.x, in: size)
     }
 
     // MARK: - Pause
@@ -144,37 +138,27 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         pauseOverlay = nil
     }
 
-    
-
     // MARK: - Asteroids
 
-      private func spawnAsteroid() {
-          let asteroid = AsteroidNode()
-
-          asteroid.position.x = AsteroidNode.randomX(in: size)
-          // y will be set by startFalling(...)
-          asteroid.startFalling(fromTopOf: size, duration: asteroidFallDuration)
-
-          addChild(asteroid)
-      }
+    private func spawnAsteroid() {
+        let asteroid = AsteroidNode()
+        asteroid.position.x = AsteroidNode.randomX(in: size)
+        asteroid.startFalling(fromTopOf: size, duration: asteroidFallDuration)
+        addChild(asteroid)
+    }
 
     // MARK: - Bullets
 
     private func fireBullet() {
-        let bullet = SKSpriteNode(color: .cyan, size: CGSize(width: 4, height: 18))
-        bullet.position = CGPoint(x: player.position.x,
-                                  y: player.position.y + player.size.height/2 + 10)
+        let bullet = BulletNode()
+
+        let startPosition = CGPoint(
+            x: player.position.x,
+            y: player.position.y + player.size.height / 2 + BulletNode.defaultSize.height / 2
+        )
+
         addChild(bullet)
-
-        let body = SKPhysicsBody(rectangleOf: bullet.size)
-        body.isDynamic = true
-        body.categoryBitMask = PhysicsCategory.bullet
-        body.contactTestBitMask = PhysicsCategory.asteroid
-        body.collisionBitMask = PhysicsCategory.none
-        bullet.physicsBody = body
-
-        let move = SKAction.moveTo(y: size.height + 30, duration: 0.7)
-        bullet.run(.sequence([move, .removeFromParent()]))
+        bullet.startMoving(from: startPosition, in: size)
     }
 
     // MARK: - Physics contacts

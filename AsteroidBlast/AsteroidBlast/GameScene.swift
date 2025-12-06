@@ -32,9 +32,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var scoreLabel: SKLabelNode!
     private var livesLabel: SKLabelNode!
     private var levelLabel: SKLabelNode!
+    private var pauseLabel: SKLabelNode!
 
     // MARK: - Game state
     private var isGameOver: Bool = false
+    private var isGamePaused: Bool = false
+
+    // MARK: - Pause overlay
+    private var pauseOverlay: PauseOverlay?
 
     // MARK: - Scene setup
     override func didMove(to view: SKView) {
@@ -92,6 +97,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                                       y: size.height - 40)
         addChild(levelLabel)
 
+        // Pause (small label under lives)
+        pauseLabel = SKLabelNode(fontNamed: "Menlo")
+        pauseLabel.text = "Pause"
+        pauseLabel.fontSize = 14
+        pauseLabel.fontColor = .yellow
+        pauseLabel.horizontalAlignmentMode = .right
+        pauseLabel.position = CGPoint(x: size.width - 16,
+                                      y: size.height - 65)
+        pauseLabel.name = "pauseButton"
+        addChild(pauseLabel)
+
         updateHUD()
     }
 
@@ -103,7 +119,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Game loop
     override func update(_ currentTime: TimeInterval) {
-        if isGameOver { return }   // stop spawning once game is over
+        if isGameOver || isGamePaused { return }   // stop when paused or over
 
         if lastUpdateTime == 0 {
             lastUpdateTime = currentTime
@@ -120,21 +136,64 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Touch input
 
-    // Fire a bullet when the player taps
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if isGameOver { return }
-        guard touches.first != nil else { return }
+        guard let touch = touches.first else { return }
+        let location = touch.location(in: self)
+        let node = atPoint(location)
+
+        // Handle pause / resume taps
+        if let nodeName = node.name {
+            if nodeName == "pauseButton" {
+                togglePause()
+                return
+            } else if nodeName == PauseOverlay.resumeButtonName {
+                togglePause()
+                return
+            }
+        }
+
+        // If the game is paused or over, ignore gameplay taps
+        if isGamePaused || isGameOver { return }
+
+        // Normal tap: fire bullet
         fireBullet()
     }
 
-    // Drag finger to move the player left/right
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if isGameOver { return }
+        if isGameOver || isGamePaused { return }
+
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
 
         // Only move on X axis, keep Y fixed
         player.position.x = location.x
+    }
+
+    // MARK: - Pause logic
+
+    private func togglePause() {
+        isGamePaused.toggle()
+
+        if isGamePaused {
+            showPauseOverlay()
+        } else {
+            hidePauseOverlay()
+        }
+    }
+
+    private func showPauseOverlay() {
+        if pauseOverlay == nil {
+            let overlay = PauseOverlay()
+            overlay.configure(for: size)
+            overlay.position = .zero
+            pauseOverlay = overlay
+            addChild(overlay)
+        }
+    }
+
+    private func hidePauseOverlay() {
+        pauseOverlay?.removeFromParent()
+        pauseOverlay = nil
     }
 
     // MARK: - Asteroid logic
@@ -193,7 +252,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Physics contact handling
     func didBegin(_ contact: SKPhysicsContact) {
-        if isGameOver { return }
+        if isGameOver || isGamePaused { return }
 
         let firstBody: SKPhysicsBody
         let secondBody: SKPhysicsBody
@@ -249,8 +308,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Difficulty / Level logic
 
     private func updateDifficultyIfNeeded() {
-        // Example rule:
-        // Every 10 points, increase level by 1
+        // Every 10 points, increase level
         let newLevel = max(1, score / 10 + 1)
 
         if newLevel > level {
@@ -265,21 +323,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // - asteroids fall a bit faster
         // but never go beyond min values
 
-        // Decrease spawn interval by 10% per level
         asteroidSpawnInterval = max(
             minAsteroidSpawnInterval,
             asteroidSpawnInterval * 0.9
         )
 
-        // Decrease fall duration by 10% per level
         asteroidFallDuration = max(
             minAsteroidFallDuration,
             asteroidFallDuration * 0.9
         )
 
-        // Optional: show a quick level-up message
         showLevelUpLabel()
-
         updateHUD()
     }
 

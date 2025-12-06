@@ -18,20 +18,28 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Asteroid spawn
     private var timeSinceLastAsteroid: TimeInterval = 0
-    private let asteroidSpawnInterval: TimeInterval = 1.2  // seconds
+    private var asteroidSpawnInterval: TimeInterval = 1.2        // starts easy
+    private let minAsteroidSpawnInterval: TimeInterval = 0.3     // cap difficulty
 
-    // MARK: - Score / Lives
-    private var score: Int = 0
-    private var lives: Int = 3
+    private var asteroidFallDuration: TimeInterval = 4.0         // starts slow
+    private let minAsteroidFallDuration: TimeInterval = 1.2      // fastest allowed
+
+    // MARK: - Score / Lives / Level
+    fileprivate var score: Int = 0
+    fileprivate var lives: Int = 3
+    private var level: Int = 1
 
     private var scoreLabel: SKLabelNode!
     private var livesLabel: SKLabelNode!
+    private var levelLabel: SKLabelNode!
+
+    // MARK: - Game state
+    private var isGameOver: Bool = false
 
     // MARK: - Scene setup
     override func didMove(to view: SKView) {
         backgroundColor = .black
 
-        // No gravity, everything moves via actions
         physicsWorld.gravity = .zero
         physicsWorld.contactDelegate = self
 
@@ -47,7 +55,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                                   y: size.height * 0.15)
         addChild(player)
 
-        // Physics body for player (so asteroids can hit it)
+        // Physics body for player
         let body = SKPhysicsBody(rectangleOf: player.size)
         body.isDynamic = true
         body.categoryBitMask = PhysicsCategory.player
@@ -57,6 +65,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func setupHUD() {
+        // Score (left)
         scoreLabel = SKLabelNode(fontNamed: "Menlo")
         scoreLabel.fontSize = 18
         scoreLabel.fontColor = .white
@@ -65,6 +74,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                                       y: size.height - 40)
         addChild(scoreLabel)
 
+        // Lives (right)
         livesLabel = SKLabelNode(fontNamed: "Menlo")
         livesLabel.fontSize = 18
         livesLabel.fontColor = .white
@@ -73,23 +83,34 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                                       y: size.height - 40)
         addChild(livesLabel)
 
+        // Level (center top)
+        levelLabel = SKLabelNode(fontNamed: "Menlo")
+        levelLabel.fontSize = 18
+        levelLabel.fontColor = .white
+        levelLabel.horizontalAlignmentMode = .center
+        levelLabel.position = CGPoint(x: size.width / 2,
+                                      y: size.height - 40)
+        addChild(levelLabel)
+
         updateHUD()
     }
 
     private func updateHUD() {
         scoreLabel.text = "Score: \(score)"
         livesLabel.text = "Lives: \(lives)"
+        levelLabel.text = "Level: \(level)"
     }
 
     // MARK: - Game loop
     override func update(_ currentTime: TimeInterval) {
+        if isGameOver { return }   // stop spawning once game is over
+
         if lastUpdateTime == 0 {
             lastUpdateTime = currentTime
         }
         let delta = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
-        // asteroid timer
         timeSinceLastAsteroid += delta
         if timeSinceLastAsteroid >= asteroidSpawnInterval {
             spawnAsteroid()
@@ -101,12 +122,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // Fire a bullet when the player taps
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isGameOver { return }
         guard touches.first != nil else { return }
         fireBullet()
     }
 
     // Drag finger to move the player left/right
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isGameOver { return }
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
 
@@ -135,7 +158,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         body.collisionBitMask = PhysicsCategory.none
         asteroid.physicsBody = body
 
-        let fallDuration: TimeInterval = 4.0
+        // Use current difficulty level for fall speed
+        let fallDuration = asteroidFallDuration
         let moveAction = SKAction.moveTo(y: -asteroidSize.height, duration: fallDuration)
         let removeAction = SKAction.removeFromParent()
         asteroid.run(SKAction.sequence([moveAction, removeAction]))
@@ -169,6 +193,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Physics contact handling
     func didBegin(_ contact: SKPhysicsContact) {
+        if isGameOver { return }
+
         let firstBody: SKPhysicsBody
         let secondBody: SKPhysicsBody
 
@@ -204,6 +230,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         asteroid.removeFromParent()
 
         score += 1
+        updateDifficultyIfNeeded()
         updateHUD()
     }
 
@@ -214,9 +241,84 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if lives < 0 { lives = 0 }
         updateHUD()
 
-        // For now just log; later we’ll add a Game Over screen
         if lives == 0 {
-            print("GAME OVER")
+            triggerGameOver()
         }
     }
+
+    // MARK: - Difficulty / Level logic
+
+    private func updateDifficultyIfNeeded() {
+        // Example rule:
+        // Every 10 points, increase level by 1
+        let newLevel = max(1, score / 10 + 1)
+
+        if newLevel > level {
+            level = newLevel
+            applyDifficultyForCurrentLevel()
+        }
+    }
+
+    private func applyDifficultyForCurrentLevel() {
+        // Each level:
+        // - spawn a bit faster
+        // - asteroids fall a bit faster
+        // but never go beyond min values
+
+        // Decrease spawn interval by 10% per level
+        asteroidSpawnInterval = max(
+            minAsteroidSpawnInterval,
+            asteroidSpawnInterval * 0.9
+        )
+
+        // Decrease fall duration by 10% per level
+        asteroidFallDuration = max(
+            minAsteroidFallDuration,
+            asteroidFallDuration * 0.9
+        )
+
+        // Optional: show a quick level-up message
+        showLevelUpLabel()
+
+        updateHUD()
+    }
+
+    private func showLevelUpLabel() {
+        let label = SKLabelNode(fontNamed: "Menlo-Bold")
+        label.text = "Level \(level)"
+        label.fontSize = 28
+        label.fontColor = .yellow
+        label.position = CGPoint(x: size.width / 2,
+                                 y: size.height * 0.7)
+        label.alpha = 0.0
+        addChild(label)
+
+        let fadeIn = SKAction.fadeIn(withDuration: 0.2)
+        let wait = SKAction.wait(forDuration: 0.6)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.4)
+        let remove = SKAction.removeFromParent()
+        label.run(SKAction.sequence([fadeIn, wait, fadeOut, remove]))
+    }
+
+    // MARK: - Game Over
+
+    private func triggerGameOver() {
+        isGameOver = true
+
+        let wait = SKAction.wait(forDuration: 0.5)
+        let transitionAction = SKAction.run { [weak self] in
+            guard let self = self else { return }
+            let gameOverScene = GameOverScene(size: self.size)
+            gameOverScene.finalScore = self.score
+            gameOverScene.scaleMode = self.scaleMode
+
+            self.view?.presentScene(
+                gameOverScene,
+                transition: SKTransition.crossFade(withDuration: 0.7)
+            )
+        }
+
+        run(SKAction.sequence([wait, transitionAction]))
+    }
 }
+

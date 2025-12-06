@@ -8,7 +8,8 @@ class GameViewController: UIViewController {
         super.viewDidLoad()
 
         if let skView = self.view as? SKView {
-            let scene = GameScene(size: skView.bounds.size)
+            // Start app at MenuScene
+            let scene = MenuScene(size: skView.bounds.size)
             scene.scaleMode = .resizeFill
             skView.presentScene(scene)
 
@@ -19,10 +20,11 @@ class GameViewController: UIViewController {
     }
 
     override var shouldAutorotate: Bool {
-        true
+        return true
     }
 
     override var prefersStatusBarHidden: Bool {
-        true
+        return true
     }
 }
+

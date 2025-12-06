@@ -10,21 +10,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Asteroid spawn
     private var timeSinceLastAsteroid: TimeInterval = 0
-    private var asteroidSpawnInterval: TimeInterval = 1.2        // starts easy
-    private let minAsteroidSpawnInterval: TimeInterval = 0.3     // cap difficulty
+    private var asteroidSpawnInterval: TimeInterval = 1.2
+    private let minAsteroidSpawnInterval: TimeInterval = 0.3
 
-    private var asteroidFallDuration: TimeInterval = 4.0         // starts slow
-    private let minAsteroidFallDuration: TimeInterval = 1.2      // fastest allowed
+    private var asteroidFallDuration: TimeInterval = 4.0
+    private let minAsteroidFallDuration: TimeInterval = 1.2
 
     // MARK: - Score / Lives / Level
     fileprivate var score: Int = 0
     fileprivate var lives: Int = 3
     private var level: Int = 1
 
-    private var scoreLabel: SKLabelNode!
-    private var livesLabel: SKLabelNode!
-    private var levelLabel: SKLabelNode!
-    private var pauseLabel: SKLabelNode!
+    // MARK: - HUD
+    private var hud: HUD!
 
     // MARK: - Game state
     private var isGameOver: Bool = false
@@ -44,7 +42,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupHUD()
     }
 
-    // MARK: - Setup helpers
+    // MARK: - Setup
 
     private func setupPlayer() {
         player = SKSpriteNode(color: .white, size: CGSize(width: 60, height: 20))
@@ -60,50 +58,18 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func setupHUD() {
-        // Score (left)
-        scoreLabel = SKLabelNode(fontNamed: "Menlo")
-        scoreLabel.fontSize = 18
-        scoreLabel.fontColor = .white
-        scoreLabel.horizontalAlignmentMode = .left
-        scoreLabel.position = CGPoint(x: 16, y: size.height - 40)
-        addChild(scoreLabel)
-
-        // Lives (right)
-        livesLabel = SKLabelNode(fontNamed: "Menlo")
-        livesLabel.fontSize = 18
-        livesLabel.fontColor = .white
-        livesLabel.horizontalAlignmentMode = .right
-        livesLabel.position = CGPoint(x: size.width - 16, y: size.height - 40)
-        addChild(livesLabel)
-
-        // Level (top center)
-        levelLabel = SKLabelNode(fontNamed: "Menlo")
-        levelLabel.fontSize = 18
-        levelLabel.fontColor = .white
-        levelLabel.horizontalAlignmentMode = .center
-        levelLabel.position = CGPoint(x: size.width / 2, y: size.height - 40)
-        addChild(levelLabel)
-
-        // Pause (below lives)
-        pauseLabel = SKLabelNode(fontNamed: "Menlo")
-        pauseLabel.text = "Pause"
-        pauseLabel.fontSize = 14
-        pauseLabel.fontColor = .yellow
-        pauseLabel.horizontalAlignmentMode = .right
-        pauseLabel.position = CGPoint(x: size.width - 16, y: size.height - 65)
-        pauseLabel.name = "pauseButton"
-        addChild(pauseLabel)
-
+        hud = HUD()
+        hud.configure(for: size)
+        addChild(hud)
         updateHUD()
     }
 
     private func updateHUD() {
-        scoreLabel.text = "Score: \(score)"
-        livesLabel.text = "Lives: \(lives)"
-        levelLabel.text = "Level: \(level)"
+        hud.update(score: score, lives: lives, level: level)
     }
 
     // MARK: - Game loop
+
     override func update(_ currentTime: TimeInterval) {
         if isGameOver || isGamePaused { return }
 
@@ -121,16 +87,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
-    // MARK: - Input handling
+    // MARK: - Input
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
         let node = atPoint(location)
 
-        // Pause and resume
+        // Pause / Resume
         if let nodeName = node.name {
-            if nodeName == "pauseButton" {
+            if nodeName == HUD.pauseButtonName {
                 togglePause()
                 return
             } else if nodeName == PauseOverlay.resumeButtonName {
@@ -149,7 +115,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
-
         player.position.x = location.x
     }
 
@@ -179,26 +144,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         pauseOverlay = nil
     }
 
+    
+
     // MARK: - Asteroids
 
-    private func spawnAsteroid() {
-        let asteroidSize = CGSize(width: 30, height: 30)
-        let asteroid = SKSpriteNode(color: .gray, size: asteroidSize)
+      private func spawnAsteroid() {
+          let asteroid = AsteroidNode()
 
-        let randomX = CGFloat.random(in: asteroidSize.width/2 ... size.width - asteroidSize.width/2)
-        asteroid.position = CGPoint(x: randomX, y: size.height + asteroidSize.height)
-        addChild(asteroid)
+          asteroid.position.x = AsteroidNode.randomX(in: size)
+          // y will be set by startFalling(...)
+          asteroid.startFalling(fromTopOf: size, duration: asteroidFallDuration)
 
-        let body = SKPhysicsBody(rectangleOf: asteroidSize)
-        body.isDynamic = true
-        body.categoryBitMask = PhysicsCategory.asteroid
-        body.contactTestBitMask = PhysicsCategory.bullet | PhysicsCategory.player
-        body.collisionBitMask = PhysicsCategory.none
-        asteroid.physicsBody = body
-
-        let fall = SKAction.moveTo(y: -asteroidSize.height, duration: asteroidFallDuration)
-        asteroid.run(SKAction.sequence([fall, .removeFromParent()]))
-    }
+          addChild(asteroid)
+      }
 
     // MARK: - Bullets
 
@@ -216,7 +174,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         bullet.physicsBody = body
 
         let move = SKAction.moveTo(y: size.height + 30, duration: 0.7)
-        bullet.run(SKAction.sequence([move, .removeFromParent()]))
+        bullet.run(.sequence([move, .removeFromParent()]))
     }
 
     // MARK: - Physics contacts
@@ -227,19 +185,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let (a, b) = sortBodies(contact)
 
         if a.categoryBitMask == PhysicsCategory.asteroid &&
-           b.categoryBitMask == PhysicsCategory.bullet {
-            handleBulletHitAsteroid(bullet: b.node!, asteroid: a.node!)
+            b.categoryBitMask == PhysicsCategory.bullet,
+           let asteroid = a.node, let bullet = b.node {
+            handleBulletHitAsteroid(bullet: bullet, asteroid: asteroid)
         }
 
         if a.categoryBitMask == PhysicsCategory.player &&
-           b.categoryBitMask == PhysicsCategory.asteroid {
-            handlePlayerHitAsteroid(asteroid: b.node!)
+            b.categoryBitMask == PhysicsCategory.asteroid,
+           let asteroid = b.node {
+            handlePlayerHitAsteroid(asteroid: asteroid)
         }
     }
 
-    private func sortBodies(_ contact: SKPhysicsContact)
-        -> (SKPhysicsBody, SKPhysicsBody)
-    {
+    private func sortBodies(_ contact: SKPhysicsContact) -> (SKPhysicsBody, SKPhysicsBody) {
         if contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask {
             return (contact.bodyA, contact.bodyB)
         } else {
@@ -279,7 +237,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private func applyDifficultyForCurrentLevel() {
         asteroidSpawnInterval = max(minAsteroidSpawnInterval, asteroidSpawnInterval * 0.9)
-        asteroidFallDuration   = max(minAsteroidFallDuration, asteroidFallDuration * 0.9)
+        asteroidFallDuration = max(minAsteroidFallDuration, asteroidFallDuration * 0.9)
 
         showLevelUpLabel()
         updateHUD()
@@ -314,8 +272,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 let gameOver = GameOverScene(size: self.size)
                 gameOver.finalScore = self.score
                 gameOver.scaleMode = self.scaleMode
-                self.view?.presentScene(gameOver,
-                    transition: .crossFade(withDuration: 0.7))
+                self.view?.presentScene(
+                    gameOver,
+                    transition: .crossFade(withDuration: 0.7)
+                )
             }
         ]))
     }

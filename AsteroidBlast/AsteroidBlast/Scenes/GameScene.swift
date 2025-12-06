@@ -1,13 +1,5 @@
 import SpriteKit
 
-// MARK: - Physics categories (bit masks)
-struct PhysicsCategory {
-    static let none:    UInt32 = 0
-    static let player:  UInt32 = 1 << 0
-    static let asteroid:UInt32 = 1 << 1
-    static let bullet:  UInt32 = 1 << 2
-}
-
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Time tracking
@@ -41,7 +33,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Pause overlay
     private var pauseOverlay: PauseOverlay?
 
-    // MARK: - Scene setup
+    // MARK: - Scene lifecycle
     override func didMove(to view: SKView) {
         backgroundColor = .black
 
@@ -52,15 +44,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupHUD()
     }
 
+    // MARK: - Setup helpers
+
     private func setupPlayer() {
-        // Player: white rectangle near bottom of screen
-        player = SKSpriteNode(color: .white,
-                              size: CGSize(width: 60, height: 20))
-        player.position = CGPoint(x: size.width / 2,
-                                  y: size.height * 0.15)
+        player = SKSpriteNode(color: .white, size: CGSize(width: 60, height: 20))
+        player.position = CGPoint(x: size.width / 2, y: size.height * 0.15)
         addChild(player)
 
-        // Physics body for player
         let body = SKPhysicsBody(rectangleOf: player.size)
         body.isDynamic = true
         body.categoryBitMask = PhysicsCategory.player
@@ -75,8 +65,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         scoreLabel.fontSize = 18
         scoreLabel.fontColor = .white
         scoreLabel.horizontalAlignmentMode = .left
-        scoreLabel.position = CGPoint(x: 16,
-                                      y: size.height - 40)
+        scoreLabel.position = CGPoint(x: 16, y: size.height - 40)
         addChild(scoreLabel)
 
         // Lives (right)
@@ -84,27 +73,24 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         livesLabel.fontSize = 18
         livesLabel.fontColor = .white
         livesLabel.horizontalAlignmentMode = .right
-        livesLabel.position = CGPoint(x: size.width - 16,
-                                      y: size.height - 40)
+        livesLabel.position = CGPoint(x: size.width - 16, y: size.height - 40)
         addChild(livesLabel)
 
-        // Level (center top)
+        // Level (top center)
         levelLabel = SKLabelNode(fontNamed: "Menlo")
         levelLabel.fontSize = 18
         levelLabel.fontColor = .white
         levelLabel.horizontalAlignmentMode = .center
-        levelLabel.position = CGPoint(x: size.width / 2,
-                                      y: size.height - 40)
+        levelLabel.position = CGPoint(x: size.width / 2, y: size.height - 40)
         addChild(levelLabel)
 
-        // Pause (small label under lives)
+        // Pause (below lives)
         pauseLabel = SKLabelNode(fontNamed: "Menlo")
         pauseLabel.text = "Pause"
         pauseLabel.fontSize = 14
         pauseLabel.fontColor = .yellow
         pauseLabel.horizontalAlignmentMode = .right
-        pauseLabel.position = CGPoint(x: size.width - 16,
-                                      y: size.height - 65)
+        pauseLabel.position = CGPoint(x: size.width - 16, y: size.height - 65)
         pauseLabel.name = "pauseButton"
         addChild(pauseLabel)
 
@@ -119,11 +105,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Game loop
     override func update(_ currentTime: TimeInterval) {
-        if isGameOver || isGamePaused { return }   // stop when paused or over
+        if isGameOver || isGamePaused { return }
 
         if lastUpdateTime == 0 {
             lastUpdateTime = currentTime
         }
+
         let delta = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
@@ -134,14 +121,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
-    // MARK: - Touch input
+    // MARK: - Input handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
         let node = atPoint(location)
 
-        // Handle pause / resume taps
+        // Pause and resume
         if let nodeName = node.name {
             if nodeName == "pauseButton" {
                 togglePause()
@@ -152,10 +139,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
         }
 
-        // If the game is paused or over, ignore gameplay taps
         if isGamePaused || isGameOver { return }
 
-        // Normal tap: fire bullet
         fireBullet()
     }
 
@@ -165,11 +150,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
 
-        // Only move on X axis, keep Y fixed
         player.position.x = location.x
     }
 
-    // MARK: - Pause logic
+    // MARK: - Pause
 
     private func togglePause() {
         isGamePaused.toggle()
@@ -185,7 +169,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if pauseOverlay == nil {
             let overlay = PauseOverlay()
             overlay.configure(for: size)
-            overlay.position = .zero
             pauseOverlay = overlay
             addChild(overlay)
         }
@@ -196,20 +179,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         pauseOverlay = nil
     }
 
-    // MARK: - Asteroid logic
+    // MARK: - Asteroids
+
     private func spawnAsteroid() {
         let asteroidSize = CGSize(width: 30, height: 30)
         let asteroid = SKSpriteNode(color: .gray, size: asteroidSize)
 
-        let randomX = CGFloat.random(
-            in: asteroidSize.width / 2 ... (size.width - asteroidSize.width / 2)
-        )
-        asteroid.position = CGPoint(x: randomX,
-                                    y: size.height + asteroidSize.height)
-
+        let randomX = CGFloat.random(in: asteroidSize.width/2 ... size.width - asteroidSize.width/2)
+        asteroid.position = CGPoint(x: randomX, y: size.height + asteroidSize.height)
         addChild(asteroid)
 
-        // Physics body so bullets and player can hit it
         let body = SKPhysicsBody(rectangleOf: asteroidSize)
         body.isDynamic = true
         body.categoryBitMask = PhysicsCategory.asteroid
@@ -217,74 +196,58 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         body.collisionBitMask = PhysicsCategory.none
         asteroid.physicsBody = body
 
-        // Use current difficulty level for fall speed
-        let fallDuration = asteroidFallDuration
-        let moveAction = SKAction.moveTo(y: -asteroidSize.height, duration: fallDuration)
-        let removeAction = SKAction.removeFromParent()
-        asteroid.run(SKAction.sequence([moveAction, removeAction]))
+        let fall = SKAction.moveTo(y: -asteroidSize.height, duration: asteroidFallDuration)
+        asteroid.run(SKAction.sequence([fall, .removeFromParent()]))
     }
 
-    // MARK: - Bullet logic
+    // MARK: - Bullets
+
     private func fireBullet() {
-        let bulletSize = CGSize(width: 4, height: 18)
-        let bullet = SKSpriteNode(color: .cyan, size: bulletSize)
-
-        bullet.position = CGPoint(
-            x: player.position.x,
-            y: player.position.y + player.size.height / 2 + bulletSize.height / 2
-        )
-
+        let bullet = SKSpriteNode(color: .cyan, size: CGSize(width: 4, height: 18))
+        bullet.position = CGPoint(x: player.position.x,
+                                  y: player.position.y + player.size.height/2 + 10)
         addChild(bullet)
 
-        // Physics body for bullet
-        let body = SKPhysicsBody(rectangleOf: bulletSize)
+        let body = SKPhysicsBody(rectangleOf: bullet.size)
         body.isDynamic = true
         body.categoryBitMask = PhysicsCategory.bullet
         body.contactTestBitMask = PhysicsCategory.asteroid
         body.collisionBitMask = PhysicsCategory.none
         bullet.physicsBody = body
 
-        let travelTime: TimeInterval = 0.7
-        let moveAction = SKAction.moveTo(y: size.height + bulletSize.height, duration: travelTime)
-        let removeAction = SKAction.removeFromParent()
-        bullet.run(SKAction.sequence([moveAction, removeAction]))
+        let move = SKAction.moveTo(y: size.height + 30, duration: 0.7)
+        bullet.run(SKAction.sequence([move, .removeFromParent()]))
     }
 
-    // MARK: - Physics contact handling
+    // MARK: - Physics contacts
+
     func didBegin(_ contact: SKPhysicsContact) {
-        if isGameOver || isGamePaused { return }
+        if isGamePaused || isGameOver { return }
 
-        let firstBody: SKPhysicsBody
-        let secondBody: SKPhysicsBody
+        let (a, b) = sortBodies(contact)
 
-        // Sort bodies so lower categoryBitMask is first
-        if contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask {
-            firstBody = contact.bodyA
-            secondBody = contact.bodyB
-        } else {
-            firstBody = contact.bodyB
-            secondBody = contact.bodyA
+        if a.categoryBitMask == PhysicsCategory.asteroid &&
+           b.categoryBitMask == PhysicsCategory.bullet {
+            handleBulletHitAsteroid(bullet: b.node!, asteroid: a.node!)
         }
 
-        let firstCat = firstBody.categoryBitMask
-        let secondCat = secondBody.categoryBitMask
-
-        // Bullet vs Asteroid
-        if firstCat == PhysicsCategory.asteroid && secondCat == PhysicsCategory.bullet {
-            if let asteroid = firstBody.node, let bullet = secondBody.node {
-                handleBulletAsteroidCollision(bullet: bullet, asteroid: asteroid)
-            }
-        }
-
-        // Player vs Asteroid
-        if firstCat == PhysicsCategory.player && secondCat == PhysicsCategory.asteroid {
-            if let asteroid = secondBody.node {
-                handlePlayerAsteroidCollision(asteroid: asteroid)
-            }
+        if a.categoryBitMask == PhysicsCategory.player &&
+           b.categoryBitMask == PhysicsCategory.asteroid {
+            handlePlayerHitAsteroid(asteroid: b.node!)
         }
     }
 
-    private func handleBulletAsteroidCollision(bullet: SKNode, asteroid: SKNode) {
+    private func sortBodies(_ contact: SKPhysicsContact)
+        -> (SKPhysicsBody, SKPhysicsBody)
+    {
+        if contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask {
+            return (contact.bodyA, contact.bodyB)
+        } else {
+            return (contact.bodyB, contact.bodyA)
+        }
+    }
+
+    private func handleBulletHitAsteroid(bullet: SKNode, asteroid: SKNode) {
         bullet.removeFromParent()
         asteroid.removeFromParent()
 
@@ -293,22 +256,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         updateHUD()
     }
 
-    private func handlePlayerAsteroidCollision(asteroid: SKNode) {
+    private func handlePlayerHitAsteroid(asteroid: SKNode) {
         asteroid.removeFromParent()
-
         lives -= 1
-        if lives < 0 { lives = 0 }
         updateHUD()
 
-        if lives == 0 {
+        if lives <= 0 {
             triggerGameOver()
         }
     }
 
-    // MARK: - Difficulty / Level logic
+    // MARK: - Difficulty / Levels
 
     private func updateDifficultyIfNeeded() {
-        // Every 10 points, increase level
         let newLevel = max(1, score / 10 + 1)
 
         if newLevel > level {
@@ -318,20 +278,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func applyDifficultyForCurrentLevel() {
-        // Each level:
-        // - spawn a bit faster
-        // - asteroids fall a bit faster
-        // but never go beyond min values
-
-        asteroidSpawnInterval = max(
-            minAsteroidSpawnInterval,
-            asteroidSpawnInterval * 0.9
-        )
-
-        asteroidFallDuration = max(
-            minAsteroidFallDuration,
-            asteroidFallDuration * 0.9
-        )
+        asteroidSpawnInterval = max(minAsteroidSpawnInterval, asteroidSpawnInterval * 0.9)
+        asteroidFallDuration   = max(minAsteroidFallDuration, asteroidFallDuration * 0.9)
 
         showLevelUpLabel()
         updateHUD()
@@ -342,16 +290,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         label.text = "Level \(level)"
         label.fontSize = 28
         label.fontColor = .yellow
-        label.position = CGPoint(x: size.width / 2,
-                                 y: size.height * 0.7)
-        label.alpha = 0.0
+        label.position = CGPoint(x: size.width/2, y: size.height * 0.7)
+        label.alpha = 0
         addChild(label)
 
-        let fadeIn = SKAction.fadeIn(withDuration: 0.2)
-        let wait = SKAction.wait(forDuration: 0.6)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.4)
-        let remove = SKAction.removeFromParent()
-        label.run(SKAction.sequence([fadeIn, wait, fadeOut, remove]))
+        label.run(.sequence([
+            .fadeIn(withDuration: 0.2),
+            .wait(forDuration: 0.6),
+            .fadeOut(withDuration: 0.4),
+            .removeFromParent()
+        ]))
     }
 
     // MARK: - Game Over
@@ -359,20 +307,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func triggerGameOver() {
         isGameOver = true
 
-        let wait = SKAction.wait(forDuration: 0.5)
-        let transitionAction = SKAction.run { [weak self] in
-            guard let self = self else { return }
-            let gameOverScene = GameOverScene(size: self.size)
-            gameOverScene.finalScore = self.score
-            gameOverScene.scaleMode = self.scaleMode
-
-            self.view?.presentScene(
-                gameOverScene,
-                transition: SKTransition.crossFade(withDuration: 0.7)
-            )
-        }
-
-        run(SKAction.sequence([wait, transitionAction]))
+        run(.sequence([
+            .wait(forDuration: 0.5),
+            .run { [weak self] in
+                guard let self = self else { return }
+                let gameOver = GameOverScene(size: self.size)
+                gameOver.finalScore = self.score
+                gameOver.scaleMode = self.scaleMode
+                self.view?.presentScene(gameOver,
+                    transition: .crossFade(withDuration: 0.7))
+            }
+        ]))
     }
 }
-

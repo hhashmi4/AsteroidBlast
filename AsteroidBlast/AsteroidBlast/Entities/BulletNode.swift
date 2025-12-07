@@ -3,11 +3,14 @@ import SpriteKit
 /// Simple reusable bullet entity fired by the player.
 final class BulletNode: SKSpriteNode {
 
-    static let defaultSize = CGSize(width: 4, height: 18)
+    static let defaultSize = CGSize(width: 6, height: 18)
 
-    // Convenience initializer: cyan rectangle with physics already set up.
+    // Convenience initializer: texture + physics
     convenience init() {
-        self.init(color: .cyan, size: BulletNode.defaultSize)
+        let texture = SKTexture(imageNamed: "bullet")
+        self.init(texture: texture,
+                  color: .clear,
+                  size: BulletNode.defaultSize)
         configurePhysics()
     }
 
@@ -30,13 +33,30 @@ final class BulletNode: SKSpriteNode {
         physicsBody = body
     }
 
-    /// Start moving the bullet straight up until it leaves the screen.
+    /// Fire the bullet in a given direction from a start position.
+    /// - Parameters:
+    ///   - startPosition: where the bullet starts (usually nose of ship)
+    ///   - direction: normalized direction vector (length ~1)
+    ///   - sceneSize: used to pick a distance far off-screen
+    ///   - duration: how fast to travel
     func startMoving(from startPosition: CGPoint,
+                     direction: CGVector,
                      in sceneSize: CGSize,
                      duration: TimeInterval = 0.7) {
+
         position = startPosition
 
-        let move = SKAction.moveTo(y: sceneSize.height + size.height, duration: duration)
+        // Choose a distance large enough to exit the screen.
+        let maxDimension = max(sceneSize.width, sceneSize.height)
+        let travelDistance: CGFloat = maxDimension + 200
+
+        let dx = direction.dx * travelDistance
+        let dy = direction.dy * travelDistance
+
+        let targetPoint = CGPoint(x: startPosition.x + dx,
+                                  y: startPosition.y + dy)
+
+        let move = SKAction.move(to: targetPoint, duration: duration)
         run(.sequence([move, .removeFromParent()]))
     }
 }

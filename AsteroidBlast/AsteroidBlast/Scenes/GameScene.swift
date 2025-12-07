@@ -31,23 +31,41 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Pause overlay
     private var pauseOverlay: PauseOverlay?
 
+    // MARK: - Controls
+    private var joystick: Joystick!
+    private var joystickTouch: UITouch?
+    private var shootButton: SKShapeNode!
+
     // MARK: - Scene lifecycle
     override func didMove(to view: SKView) {
         backgroundColor = .black
+
+        addBackground()
 
         physicsWorld.gravity = .zero
         physicsWorld.contactDelegate = self
 
         setupPlayer()
         setupHUD()
+        setupControls()
     }
 
     // MARK: - Setup
 
+    private func addBackground() {
+        // If you don't have starBackground yet, comment these lines out.
+        let texture = SKTexture(imageNamed: "starBackground")
+        let background = SKSpriteNode(texture: texture)
+        background.size = size
+        background.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        background.zPosition = -1
+        addChild(background)
+    }
+
     private func setupPlayer() {
         player = PlayerNode()
         player.position = CGPoint(x: size.width / 2,
-                                  y: size.height * 0.15)
+                                  y: size.height * 0.2)
         addChild(player)
     }
 
@@ -56,6 +74,26 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         hud.configure(for: size)
         addChild(hud)
         updateHUD()
+    }
+
+    private func setupControls() {
+        // Joystick (left side)
+        joystick = Joystick()
+        joystick.configure(for: size)
+        addChild(joystick)
+
+        // Shoot button (right side)
+        let radius: CGFloat = 40
+        shootButton = SKShapeNode(circleOfRadius: radius)
+        shootButton.lineWidth = 2
+        shootButton.strokeColor = .white.withAlphaComponent(0.7)
+        shootButton.fillColor = .white.withAlphaComponent(0.15)
+
+        // Position bottom-right with padding
+        shootButton.position = CGPoint(x: size.width - radius - 24,
+                                       y: radius + 40)
+        shootButton.name = "shootButton"
+        addChild(shootButton)
     }
 
     private func updateHUD() {
@@ -74,42 +112,94 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let delta = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
+        // Spawn asteroids over time
         timeSinceLastAsteroid += delta
         if timeSinceLastAsteroid >= asteroidSpawnInterval {
             spawnAsteroid()
             timeSinceLastAsteroid = 0
         }
+
+        // Move player using joystick direction
+        applyJoystickMovement(delta: delta)
+    }
+
+    private func applyJoystickMovement(delta: TimeInterval) {
+        let dir = joystick.direction
+        if dir.dx == 0 && dir.dy == 0 { return }
+
+        let speed: CGFloat = 260   // units per second
+        let dx = dir.dx * speed * CGFloat(delta)
+        let dy = dir.dy * speed * CGFloat(delta)
+
+        let newPosition = CGPoint(
+            x: player.position.x + dx,
+            y: player.position.y + dy
+        )
+        player.move(to: newPosition, in: size)
     }
 
     // MARK: - Input
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
-        let location = touch.location(in: self)
-        let node = atPoint(location)
+        for touch in touches {
+            let location = touch.location(in: self)
+            let node = atPoint(location)
 
-        // Pause / Resume
-        if let nodeName = node.name {
-            if nodeName == HUD.pauseButtonName {
-                togglePause()
-                return
-            } else if nodeName == PauseOverlay.resumeButtonName {
-                togglePause()
-                return
+            // Pause / Resume buttons first
+            if let nodeName = node.name {
+                if nodeName == HUD.pauseButtonName {
+                    togglePause()
+                    continue
+                } else if nodeName == PauseOverlay.resumeButtonName {
+                    togglePause()
+                    continue
+                }
+            }
+
+            if isGamePaused || isGameOver { continue }
+
+            // Left side → joystick
+            if location.x < size.width / 2 {
+                if joystickTouch == nil {
+                    joystickTouch = touch
+                    joystick.beginTracking(at: location, in: self)
+                }
+            }
+            // Right side → shoot button
+            else {
+                if shootButton.contains(location) {
+                    fireBullet()
+                }
             }
         }
-
-        if isGamePaused || isGameOver { return }
-
-        fireBullet()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         if isGameOver || isGamePaused { return }
 
-        guard let touch = touches.first else { return }
-        let location = touch.location(in: self)
-        player.moveHorizontally(to: location.x, in: size)
+        for touch in touches {
+            if touch == joystickTouch {
+                let location = touch.location(in: self)
+                joystick.updateTracking(at: location, in: self)
+            }
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        handleTouchEndOrCancel(touches)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        handleTouchEndOrCancel(touches)
+    }
+
+    private func handleTouchEndOrCancel(_ touches: Set<UITouch>) {
+        for touch in touches {
+            if touch == joystickTouch {
+                joystick.endTracking()
+                joystickTouch = nil
+            }
+        }
     }
 
     // MARK: - Pause
@@ -140,26 +230,50 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Asteroids
 
+    // MARK: - Asteroids
+
     private func spawnAsteroid() {
-        let asteroid = AsteroidNode()
-        asteroid.position.x = AsteroidNode.randomX(in: size)
-        asteroid.startFalling(fromTopOf: size, duration: asteroidFallDuration)
-        addChild(asteroid)
-    }
+            let asteroid = AsteroidNode()
+
+            // Avoid spawning right on top of the player
+            let safeRadius: CGFloat = 160
+
+            asteroid.startRandomDrift(
+                in: size,
+                avoiding: player.position,
+                minDistance: safeRadius,
+                baseDuration: asteroidFallDuration
+            )
+
+            addChild(asteroid)
+        }
 
     // MARK: - Bullets
 
     private func fireBullet() {
-        let bullet = BulletNode()
+            let bullet = BulletNode()
 
-        let startPosition = CGPoint(
-            x: player.position.x,
-            y: player.position.y + player.size.height / 2 + BulletNode.defaultSize.height / 2
-        )
+            // Bullet starts at the nose of the ship
+            let startPosition = CGPoint(
+                x: player.position.x,
+                y: player.position.y + player.size.height / 2
+            )
 
-        addChild(bullet)
-        bullet.startMoving(from: startPosition, in: size)
-    }
+            // Ship artwork points UP, but SpriteKit's zero angle points RIGHT.
+            // We stored zRotation as (movementAngle - π/2),
+            // so the ship's forward direction is zRotation + π/2.
+            let forwardAngle = player.zRotation + (.pi / 2)
+
+            let direction = CGVector(
+                dx: cos(forwardAngle),
+                dy: sin(forwardAngle)
+            )
+
+            addChild(bullet)
+            bullet.startMoving(from: startPosition,
+                               direction: direction,
+                               in: size)
+        }
 
     // MARK: - Physics contacts
 
@@ -191,12 +305,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private func handleBulletHitAsteroid(bullet: SKNode, asteroid: SKNode) {
         bullet.removeFromParent()
-        asteroid.removeFromParent()
 
-        score += 1
-        updateDifficultyIfNeeded()
-        updateHUD()
+        if let rock = asteroid as? AsteroidNode {
+            let destroyed = rock.takeHit()
+            if destroyed {
+                score += 1
+                updateDifficultyIfNeeded()
+                updateHUD()
+            }
+        } else {
+            // Fallback for any non-AsteroidNode
+            asteroid.removeFromParent()
+            score += 1
+            updateDifficultyIfNeeded()
+            updateHUD()
+        }
     }
+
 
     private func handlePlayerHitAsteroid(asteroid: SKNode) {
         asteroid.removeFromParent()
